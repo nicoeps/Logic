@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Timers;
 using ImGuiNET;
 using Logic.Core.IO;
@@ -120,7 +122,7 @@ namespace Logic.Frontend
         private readonly Num.Vector3 clearColor = new Num.Vector3(114f / 255f, 144f / 255f, 154f / 255f);
 
         private GateType TypeSelected = GateType.NOT;
-        private static readonly Dictionary<int, IDraw> Gates = new Dictionary<int, IDraw>();
+        private static Dictionary<int, IDraw> Gates = new Dictionary<int, IDraw>();
         private Num.Vector2 Scrolling = Num.Vector2.Zero;
         private bool ShowGrid = true;
         private int GateSelected = -1;
@@ -163,7 +165,22 @@ namespace Logic.Frontend
             ImGui.BeginGroup();
 
             ImGui.Text($"Hold middle mouse button to scroll {Scrolling.X:F2},{Scrolling.Y:F2}");
-            ImGui.SameLine(ImGui.GetWindowWidth() - 264);
+            ImGui.SameLine(ImGui.GetWindowWidth() - 352);
+            JsonSerializerOptions options = new JsonSerializerOptions {Converters = { new GateDictionaryConverter() }, WriteIndented = true};
+            if (ImGui.Button("Save"))
+            {
+                string jsonString = JsonSerializer.Serialize(Gates, typeof(Dictionary<int, IDraw>), options);
+                File.WriteAllText("gates.json", jsonString);
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Load"))
+            {
+                string jsonString = File.ReadAllText("gates.json");
+                Dictionary<int, IDraw> gates = JsonSerializer.Deserialize<Dictionary<int, IDraw>>(jsonString, options);
+                Gates = gates;
+
+            }
+            ImGui.SameLine();
             if (ImGui.Button("Clear")) { Gates.Clear(); }
             ImGui.SameLine();
             ImGui.Checkbox("Show grid", ref ShowGrid);
@@ -210,7 +227,7 @@ namespace Logic.Frontend
             {
                 if (Gates.TryGetValue(InputSelected.ID, out IDraw gate))
                 {
-                    Num.Vector2 p2 = offset + ((IDraw) gate).InputPosition(InputSelected.index);
+                    Num.Vector2 p2 = offset + gate.InputPosition(InputSelected.index);
                     Num.Vector2 p1 = ImGui.GetMousePos();
                     drawList.AddBezierCurve(p1, p1 + new Num.Vector2(50, 0), p2 + new Num.Vector2(-50, 0), p2, outline, 4.0f);
                 }
@@ -256,9 +273,6 @@ namespace Logic.Frontend
                 for (int index = 0; index < ((Gate) gate).currentInputs; ++index)
                 {
                     ImGui.SetCursorScreenPos(offset + gate.InputPosition(index) - new Num.Vector2(0, 4));
-                    drawList.AddLine(offset + gate.InputPosition(index),
-                        offset + gate.InputPosition(index) + new Num.Vector2(gate.Size.X / 4, 0),
-                        outline, 4.0f);
                     ImGui.InvisibleButton("Input", new Num.Vector2(16, 8));
                     if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
                     {
@@ -277,9 +291,6 @@ namespace Logic.Frontend
                 for (int index = 0; index < 1; ++index)
                 {
                     ImGui.SetCursorScreenPos(offset + gate.OutputPosition(index) - new Num.Vector2(gate.Size.X / 4, 4));
-                    drawList.AddLine(offset + gate.OutputPosition(index),
-                        offset + gate.OutputPosition(index) - new Num.Vector2(gate.Size.X / 4, 0),
-                        outline, 4.0f);
                     ImGui.InvisibleButton("Output", new Num.Vector2(16, 8));
                     if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
                     {
@@ -326,6 +337,22 @@ namespace Logic.Frontend
                     ? ImGui.ColorConvertFloat4ToU32(new Num.Vector4(75f / 255f, 75f / 255f, 75f / 255f, 255f / 255f))
                     : ImGui.ColorConvertFloat4ToU32(new Num.Vector4(60f / 255f, 60f / 255f, 60f / 255f, 255f / 255f));
                 gate.Draw(drawList, offset, gateBGColor, outline);
+
+                // Inputs
+                for (int index = 0; index < ((Gate) gate).currentInputs; ++index)
+                {
+                    drawList.AddLine(offset + gate.InputPosition(index),
+                        offset + gate.InputPosition(index) + new Num.Vector2(gate.Size.X / 4, 0),
+                        outline, 4.0f);
+                }
+
+                // Outputs
+                for (int index = 0; index < 1; ++index)
+                {
+                    drawList.AddLine(offset + gate.OutputPosition(index),
+                        offset + gate.OutputPosition(index) - new Num.Vector2(gate.Size.X / 4, 0),
+                        outline, 4.0f);
+                }
 
                 ImGui.PopID();
             }
