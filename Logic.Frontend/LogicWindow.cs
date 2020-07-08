@@ -124,6 +124,8 @@ namespace Logic.Frontend
         private Num.Vector2 Scrolling = Num.Vector2.Zero;
         private bool ShowGrid = true;
         private int GateSelected = -1;
+        private (int ID, int index) InputSelected = (-1, -1);
+        private Gate OutputSelected = null;
 
         private void ImGuiLayout()
         {
@@ -138,6 +140,8 @@ namespace Logic.Frontend
 
             bool openContextMenu = false;
             bool openGateMenu = false;
+            bool openInputMenu = false;
+            bool openOutputMenu = false;
             int gateHoveredInScene = -1;
 
             // Draw list of selectable gates
@@ -159,7 +163,9 @@ namespace Logic.Frontend
             ImGui.BeginGroup();
 
             ImGui.Text($"Hold middle mouse button to scroll {Scrolling.X:F2},{Scrolling.Y:F2}");
-            ImGui.SameLine(ImGui.GetWindowWidth() - 220);
+            ImGui.SameLine(ImGui.GetWindowWidth() - 264);
+            if (ImGui.Button("Clear")) { Gates.Clear(); }
+            ImGui.SameLine();
             ImGui.Checkbox("Show grid", ref ShowGrid);
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, Num.Vector2.One);
             ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Num.Vector2.Zero);
@@ -200,6 +206,31 @@ namespace Logic.Frontend
             uint green = ImGui.ColorConvertFloat4ToU32(new Num.Vector4(0f / 255f, 255f / 255f, 0f / 255f, 255 / 255f));
             uint outline = ImGui.ColorConvertFloat4ToU32(new Num.Vector4(100f / 255f, 100f / 255f, 100f / 255f, 255f / 255f));
 
+            if (InputSelected.ID != -1 && InputSelected.index != -1 && OutputSelected == null)
+            {
+                if (Gates.TryGetValue(InputSelected.ID, out IDraw gate))
+                {
+                    Num.Vector2 p2 = offset + ((IDraw) gate).InputPosition(InputSelected.index);
+                    Num.Vector2 p1 = ImGui.GetMousePos();
+                    drawList.AddBezierCurve(p1, p1 + new Num.Vector2(50, 0), p2 + new Num.Vector2(-50, 0), p2, outline, 4.0f);
+                }
+            }
+            else if (InputSelected.ID == -1 && InputSelected.index == -1 && OutputSelected != null)
+            {
+                Num.Vector2 p1 = offset + ((IDraw) OutputSelected).OutputPosition(0);
+                Num.Vector2 p2 = ImGui.GetMousePos();
+                drawList.AddBezierCurve(p1, p1 + new Num.Vector2(50, 0), p2 + new Num.Vector2(-50, 0), p2, outline, 4.0f);
+            }
+            else if (InputSelected.ID != -1 && InputSelected.index != -1 && OutputSelected != null)
+            {
+                if (Gates.TryGetValue(InputSelected.ID, out IDraw gate))
+                {
+                    ((Gate) gate).SetInput(InputSelected.index, OutputSelected);
+                    InputSelected = (-1, -1);
+                    OutputSelected = null;
+                }
+            }
+
             foreach (Gate gate in Gates.Values.Cast<Gate>())
             {
                 for (int i = 0; i < gate.currentInputs; ++i)
@@ -208,7 +239,7 @@ namespace Logic.Frontend
                     Num.Vector2 p2 = offset + ((IDraw) gate).InputPosition(i);
                     Num.Vector2 p1 = offset + ((IDraw) gate.inputs[i].output).OutputPosition(0);
                     drawList.AddBezierCurve(p1, p1 + new Num.Vector2(50, 0), p2 + new Num.Vector2(-50, 0), p2,
-                        gate.inputs[i].output.GetOutput(0) ? green : outline, 3.0f);
+                        gate.inputs[i].output.GetOutput(0) ? green : outline, 4.0f);
                 }
             }
 
@@ -221,7 +252,48 @@ namespace Logic.Frontend
                 bool oldAnyActive = ImGui.IsAnyItemActive();
                 ImGui.SetCursorScreenPos(offset + gate.Pos);
                 ImGui.BeginGroup(); // Lock horizontal position
+                // Inputs
+                for (int index = 0; index < ((Gate) gate).currentInputs; ++index)
+                {
+                    ImGui.SetCursorScreenPos(offset + gate.InputPosition(index) - new Num.Vector2(0, 4));
+                    drawList.AddLine(offset + gate.InputPosition(index),
+                        offset + gate.InputPosition(index) + new Num.Vector2(gate.Size.X / 4, 0),
+                        outline, 4.0f);
+                    ImGui.InvisibleButton("Input", new Num.Vector2(16, 8));
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+                    {
+                        InputSelected.ID = gate.ID;
+                        InputSelected.index = index;
+                    }
+                    else if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                    {
+                        InputSelected.ID = gate.ID;
+                        InputSelected.index = index;
+                        openInputMenu = true;
+                    }
+                }
+
+                // Outputs
+                for (int index = 0; index < 1; ++index)
+                {
+                    ImGui.SetCursorScreenPos(offset + gate.OutputPosition(index) - new Num.Vector2(gate.Size.X / 4, 4));
+                    drawList.AddLine(offset + gate.OutputPosition(index),
+                        offset + gate.OutputPosition(index) - new Num.Vector2(gate.Size.X / 4, 0),
+                        outline, 4.0f);
+                    ImGui.InvisibleButton("Output", new Num.Vector2(16, 8));
+                    if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+                    {
+                        OutputSelected = (Gate) gate;
+                    }
+                    else if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                    {
+                        OutputSelected = (Gate) gate;
+                        openOutputMenu = true;
+                    }
+                }
                 ImGui.EndGroup();
+
+                ImGui.SetCursorScreenPos(offset + gate.Pos);
 
                 // Save the size of what we have emitted and whether any of the widgets are being used
                 bool gateWidgetsActive = (!oldAnyActive && ImGui.IsAnyItemActive());
@@ -255,22 +327,6 @@ namespace Logic.Frontend
                     : ImGui.ColorConvertFloat4ToU32(new Num.Vector4(60f / 255f, 60f / 255f, 60f / 255f, 255f / 255f));
                 gate.Draw(drawList, offset, gateBGColor, outline);
 
-                // Inputs
-                for (int index = 0; index < ((Gate) gate).currentInputs; ++index)
-                {
-                    drawList.AddLine(offset + gate.InputPosition(index),
-                        offset + gate.InputPosition(index) + new Num.Vector2(gate.Size.X / 4, 0),
-                        outline, 4.0f);
-                }
-
-                // Outputs
-                for (int index = 0; index < 1; ++index)
-                {
-                    drawList.AddLine(offset + gate.OutputPosition(index),
-                        offset + gate.OutputPosition(index) - new Num.Vector2(gate.Size.X / 4, 0),
-                        outline, 4.0f);
-                }
-
                 ImGui.PopID();
             }
             drawList.ChannelsMerge();
@@ -281,11 +337,15 @@ namespace Logic.Frontend
                 if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
                 {
                     GateSelected = gateHoveredInScene = -1;
+                    InputSelected = (-1, -1);
+                    OutputSelected = null;
                     openContextMenu = true;
                 }
                 else if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 {
                     GateSelected = gateHoveredInScene = -1;
+                    InputSelected = (-1, -1);
+                    OutputSelected = null;
                 }
             }
 
@@ -297,6 +357,14 @@ namespace Logic.Frontend
             else if (openContextMenu)
             {
                 ImGui.OpenPopup("ContextMenu");
+            }
+            else if (openInputMenu)
+            {
+                ImGui.OpenPopup("InputMenu");
+            }
+            else if (openOutputMenu)
+            {
+                ImGui.OpenPopup("OutputMenu");
             }
 
             // Draw gate menu
@@ -415,6 +483,37 @@ namespace Logic.Frontend
                 ImGui.EndPopup();
             }
 
+            if (ImGui.BeginPopup("InputMenu"))
+            {
+                if (ImGui.MenuItem("Delete"))
+                {
+                    if (Gates.TryGetValue(InputSelected.ID, out IDraw gate))
+                    {
+                        ((Gate) gate).SetInput(InputSelected.index, null);
+                    }
+                    InputSelected = (-1, -1);
+                    OutputSelected = null;
+                }
+                ImGui.EndPopup();
+            }
+
+            if (ImGui.BeginPopup("OutputMenu"))
+            {
+                if (ImGui.MenuItem("Delete"))
+                {
+                    foreach (Gate gateInput in Gates.Values.Cast<Gate>())
+                    {
+                        foreach (Input input in gateInput.inputs.Where(input => ((IDraw) input.output)?.ID == ((IDraw) OutputSelected)?.ID))
+                        {
+                            input.output = null;
+                        }
+                    }
+                    InputSelected = (-1, -1);
+                    OutputSelected = null;
+                }
+                ImGui.EndPopup();
+            }
+
             ImGui.PopStyleVar();
 
             // Scrolling
@@ -467,7 +566,6 @@ namespace Logic.Frontend
                 logic.UpdateInput();
                 logic.UpdateOutput();
             }
-
         }
     }
 }
