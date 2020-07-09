@@ -166,7 +166,10 @@ namespace Logic.Frontend
 
             ImGui.Text($"Hold middle mouse button to scroll {Scrolling.X:F2},{Scrolling.Y:F2}");
             ImGui.SameLine(ImGui.GetWindowWidth() - 352);
-            JsonSerializerOptions options = new JsonSerializerOptions {Converters = { new GateDictionaryConverter() }, WriteIndented = true};
+            JsonSerializerOptions options = new JsonSerializerOptions
+            {
+                Converters = { new GateDictionaryConverter() }, WriteIndented = true
+            };
             if (ImGui.Button("Save"))
             {
                 string jsonString = JsonSerializer.Serialize(Gates, typeof(Dictionary<int, IDraw>), options);
@@ -175,9 +178,12 @@ namespace Logic.Frontend
             ImGui.SameLine();
             if (ImGui.Button("Load"))
             {
-                string jsonString = File.ReadAllText("gates.json");
-                Dictionary<int, IDraw> gates = JsonSerializer.Deserialize<Dictionary<int, IDraw>>(jsonString, options);
-                Gates = gates;
+                if (File.Exists("gates.json"))
+                {
+                    string jsonString = File.ReadAllText("gates.json");
+                    Dictionary<int, IDraw> gates = JsonSerializer.Deserialize<Dictionary<int, IDraw>>(jsonString, options);
+                    Gates = gates;
+                }
 
             }
             ImGui.SameLine();
